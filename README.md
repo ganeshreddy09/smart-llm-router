@@ -2,7 +2,7 @@
 
 ![tests](https://github.com/ganeshreddy09/smart-llm-router/actions/workflows/tests.yml/badge.svg)
 
-Portfolio FastAPI service that sits in front of an LLM API and demonstrates three MLOps patterns:
+FastAPI service that sits in front of an LLM API and demonstrates three MLOps patterns:
 
 1. **Semantic caching** — skip the LLM when a close-enough prior query exists.
 2. **Cost-aware routing** — send simple prompts to a cheap model and hard prompts to a larger one.
