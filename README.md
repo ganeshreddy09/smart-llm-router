@@ -26,6 +26,23 @@ Postgres + pgvector cosine search
        ▼
      request_logs row  → GET /stats
 ```
+<img width="1198" height="953" alt="Screenshot 2026-10-02 185101" src="https://github.com/user-attachments/assets/50ebffcc-628c-411e-a88e-c682bc3435fa" />
+
+Measured with python scripts/generate_traffic.py --repeat 3, run three times against a local docker compose up stack (23 unique prompts, 69 requests per run):
+
+Metric	Result
+Total requests	207
+Cache hit rate	90.3%
+Average latency	162 ms
+Total cost	$0.0016
+Requests by model	gpt-4o-mini 135, gpt-4o 72
+Cost by model	gpt-4o $0.0014575, gpt-4o-mini $0.00010695
+
+How to read these numbers:
+
+Mock mode. These results were produced with MOCK_MODE=true, so no real LLM calls were made. Embeddings, pgvector search, routing, cost math and logging are real; the model response and its latency are simulated (see Mock mode). Costs are list prices applied to simulated token counts.
+Synthetic traffic. The script repeats a small prompt set, so the hit rate is higher than real traffic would give. The first pass over a cold cache is mostly misses (71% hit rate, 283 ms average latency); the later runs hit the warm cache.
+Routing impact. gpt-4o served about a third of requests but accounts for about 93% of spend, which is why routing simple prompts to gpt-4o-mini matters.
 
 ## Caching
 
