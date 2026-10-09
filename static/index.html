@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>smart-llm-router · dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --text: #1f2933;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --cache: #0f766e;
+      --cache-fill: rgba(15, 118, 110, 0.18);
+      --llm: #b45309;
+      --llm-fill: rgba(180, 83, 9, 0.18);
+      --bar: #1e3a5f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 28px 20px 8px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 16px 20px 40px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .card .label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .card .value {
+      margin-top: 6px;
+      font-size: 1.5rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 18px 10px;
+      margin-bottom: 12px;
+    }
+    .chart-card h2 {
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .chart-wrap { position: relative; height: 240px; }
+    .status {
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-top: 8px;
+    }
+    .status.error { color: #b91c1c; }
+    @media (max-width: 720px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>smart-llm-router</h1>
+    <p>Request volume, cache vs LLM, and spend by model · refreshes every 5s</p>
+  </header>
+  <main>
+    <section class="cards">
+      <article class="card">
+        <div class="label">Total cost</div>
+        <div class="value" id="total-cost">—</div>
+      </article>
+      <article class="card">
+        <div class="label">Cache hit rate</div>
+        <div class="value" id="hit-rate">—</div>
+      </article>
+      <article class="card">
+        <div class="label">Average latency</div>
+        <div class="value" id="avg-latency">—</div>
+      </article>
+    </section>
+    <section class="chart-card">
+      <h2>Requests over time</h2>
+      <div class="chart-wrap"><canvas id="requests-chart"></canvas></div>
+    </section>
+    <section class="chart-card">
+      <h2>Cost by model</h2>
+      <div class="chart-wrap"><canvas id="cost-chart"></canvas></div>
+    </section>
+    <p class="status" id="status">Loading…</p>
+  </main>
+  <script>
+    const sharedScales = {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+      y: { beginAtZero: true, grid: { color: "#eef0f3" } },
+    };
+
+    const requestsChart = new Chart(document.getElementById("requests-chart"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Cache hits",
+            data: [],
+            borderColor: "#0f766e",
+            backgroundColor: "rgba(15, 118, 110, 0.22)",
+            fill: true,
+            tension: 0.2,
+            pointRadius: 0,
+            borderWidth: 2,
+          },
+          {
+            label: "LLM calls",
+            data: [],
+            borderColor: "#b45309",
+            backgroundColor: "rgba(180, 83, 9, 0.22)",
+            fill: true,
+            tension: 0.2,
+            pointRadius: 0,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          x: sharedScales.x,
+          y: { ...sharedScales.y, stacked: true, ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    const costChart = new Chart(document.getElementById("cost-chart"), {
+      type: "bar",
+      data: { labels: [], datasets: [{ label: "USD", data: [], backgroundColor: "#1e3a5f" }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: sharedScales.x,
+          y: { ...sharedScales.y, ticks: { callback: (v) => "$" + Number(v).toFixed(4) } },
+        },
+      },
+    });
+
+    function formatTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function formatUsd(n) {
+      return "$" + Number(n).toFixed(4);
+    }
+
+    async function refresh() {
+      const status = document.getElementById("status");
+      try {
+        const res = await fetch("/stats");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const stats = await res.json();
+
+        document.getElementById("total-cost").textContent = formatUsd(stats.total_cost);
+        document.getElementById("hit-rate").textContent =
+          (Number(stats.cache_hit_rate) * 100).toFixed(1) + "%";
+        document.getElementById("avg-latency").textContent =
+          Number(stats.average_latency).toFixed(0) + " ms";
+
+        const series = stats.requests_over_time || [];
+        requestsChart.data.labels = series.map((row) => formatTime(row.bucket));
+        requestsChart.data.datasets[0].data = series.map((row) => row.cache_hits);
+        requestsChart.data.datasets[1].data = series.map((row) => row.llm_calls);
+        requestsChart.update("none");
+
+        const models = Object.keys(stats.cost_by_model || {});
+        costChart.data.labels = models;
+        costChart.data.datasets[0].data = models.map((m) => stats.cost_by_model[m].cost_usd);
+        costChart.update("none");
+
+        const n = stats.total_requests;
+        status.classList.remove("error");
+        status.textContent =
+          n + " request" + (n === 1 ? "" : "s") + " logged · last update " +
+          new Date().toLocaleTimeString();
+      } catch (err) {
+        status.classList.add("error");
+        status.textContent = "Could not load /stats (" + err.message + ")";
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>
