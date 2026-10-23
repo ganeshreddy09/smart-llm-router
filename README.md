@@ -114,7 +114,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-First build downloads the CPU-only PyTorch wheel (~200MB) plus MiniLM — a few minutes on a normal connection, longer on a slow one. This is a one-time cost; Docker caches the layer, so later builds skip it unless `requirements.txt` changes.
+First build downloads the CPU-only PyTorch wheel plus MiniLM — a few minutes on a normal connection, longer on a slow one. This is a one-time cost; Docker caches the layer, so later builds skip it unless `requirements.txt` changes.
 
 - API: http://localhost:8000
 - Dashboard: http://localhost:8000/dashboard
